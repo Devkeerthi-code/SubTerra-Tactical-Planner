@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subterra: UUV Tactical Planner</title>
+    <style>
+        /* --- FUTURISTIC THEME CSS --- */
+        :root {
+            --bg-dark: #0a0e17;
+            --panel-bg: #111827;
+            --text-light: #e2e8f0;
+            --accent-cyan: #00f2ff;
+            --accent-red: #ff3333;
+            --accent-green: #33ff57;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            margin: 0;
+            padding: 20px;
+        }
+
+        #app-container {
+            width: 95%;
+            max-width: 900px;
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.1);
+            border: 1px solid #1e293b;
+            overflow: hidden;
+        }
+
+        #header {
+            background: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+        }
+        #header h2 { margin: 0; font-size: 1.2rem; letter-spacing: 1px; color: var(--accent-cyan); }
+        #cursor-coords { font-family: monospace; font-size: 0.9rem; color: var(--accent-cyan); }
+
+        #input-panel {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 20px;
+            background-color: rgba(15, 23, 42, 0.8);
+            border-bottom: 1px solid #334155;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: #0a0e17;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            margin-right: 8px;
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .input-group input {
+            width: 60px;
+            padding: 6px;
+            background-color: #1e293b;
+            border: 1px solid #475569;
+            color: var(--accent-cyan);
+            border-radius: 4px;
+            font-size: 1rem;
+            text-align: center;
+            font-family: monospace;
+        }
+
+        /* --- THE NEW MAP CONTAINER --- */
+        #map-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 60%; /* Aspect ratio */
+            /* Futuristic Background: Radial gradient + subtle grid pattern overlay */
+            background: 
+                radial-gradient(circle at center, #1a2c4e 0%, #0a0e17 100%),
+                linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px);
+            background-size: 100% 100%, 20px 20px, 20px 20px; /* Size for the subtle background grid */
+            border-bottom: 3px solid #334155;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        #status-bar {
+            padding: 15px 20px;
+            background-color: #0f172a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            border-top: 1px solid #334155;
+        }
+
+        #battery-wrapper { display: flex; align-items: center; gap: 10px; }
+        #battery-meter {
+            width: 180px; height: 14px;
+            background-color: #0a0e17;
+            border: 1px solid #475569;
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+        }
+        #battery-level {
+            height: 100%; width: 100%;
+            background-color: var(--accent-green);
+            transition: width 0.3s linear, background-color 0.3s;
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        .button-start {
+            background: linear-gradient(135deg, var(--accent-red), #c0392b);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            text-align: center;
+            display: inline-block;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(255, 51, 51, 0.3);
+            letter-spacing: 1px;
+        }
+        .button-start:hover:not(:disabled) {
+            box-shadow: 0 0 25px rgba(255, 51, 51, 0.6);
+            transform: translateY(-2px);
+        }
+        .button-start:disabled {
+            background: #334155;
+            color: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        #max-time-display { font-weight: bold; color: var(--accent-green); font-size: 1.1rem; font-family: monospace; }
+        #status-text { font-family: monospace; color: var(--accent-cyan); }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="header">
+        <h2>SUBTERRA: TACTICAL PLANNER</h2>
+        <div id="cursor-coords">CURSOR: X:000 Y:000</div>
+    </div>
+    
+    <div id="input-panel">
+        <div class="input-group">
+            <label for="target-x">TGT X:</label>
+            <input type="number" id="target-x" value="85" min="0" max="100">
+        </div>
+        <div class="input-group">
+            <label for="target-y">TGT Y:</label>
+            <input type="number" id="target-y" value="70" min="0" max="100">
+        </div>
+        <div class="input-group" style="border-color: var(--accent-green);">
+            <label style="color: var(--accent-green);">MAX HOVER:</label>
+            <span id="max-time-display">0</span>
+            <span style="font-size:0.8rem; margin-left:4px; color: #94a3b8;">c-cycles</span>
+        </div>
+        <button id="start-button" class="button-start">INITIATE SEQUENCE</button>
+    </div>
+
+    <div id="map-container">
+        <canvas id="uuv-canvas"></canvas>
+    </div>
+
+    <div id="status-bar">
+        <div id="status-text">STATUS: STANDBY [ORIGIN: 0,0]</div>
+        <div id="battery-wrapper">
+            <span>POWER:</span>
+            <div id="battery-meter"><div id="battery-level"></div></div>
+            <span id="battery-value">100%</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- CONFIGURATION ---
+    const BATTERY_MAX = 100;
+    const MIN_RETURN_ENERGY = 5.0; 
+    const CHARGE_RATE = 0.8;       
+    const MOVE_SPEED = 0.6;        
+    const ENERGY_MOVE_COST = 0.4;  
+    const ENERGY_HOVER_COST = 0.1; 
+    const OBSTACLE_RADIUS = 6;     
+    
+    const DOCKS = [
+        { x: 15, y: 15, id: 'ALPHA' },
+        { x: 80, y: 20, id: 'BRAVO' },
+        { x: 50, y: 85, id: 'CHARLIE' }
+    ];
+
+    // --- STATE MANAGEMENT ---
+    let uuv = {
+        pos: { x: 0, y: 0 },
+        battery: BATTERY_MAX,
+        state: "IDLE", 
+        target: { x: 0, y: 0 },
+        hover_timer: 0,
+        deployment_pos: { x: 0, y: 0 }, 
+        home_dock_pos: { x: 0, y: 0 },  
+        is_running: false,
+        mission_count: 0, 
+        heading_angle: 0
+    };
+
+    // --- CANVAS & DOM SETUP ---
+    const canvas = document.getElementById('uuv-canvas');
+    const ctx = canvas.getContext('2d');
+    const statusText = document.getElementById('status-text');
+    const batteryValue = document.getElementById('battery-value');
+    const batteryLevel = document.getElementById('battery-level');
+    const startButton = document.getElementById('start-button');
+    const maxTimeDisplay = document.getElementById('max-time-display');
+    const cursorCoordsDisplay = document.getElementById('cursor-coords');
+    const targetInputX = document.getElementById('target-x');
+    const targetInputY = document.getElementById('target-y');
+
+    let scaleX, scaleY;
+
+    function resizeCanvas() {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        scaleX = canvas.width / 100;
+        scaleY = canvas.height / 100;
+        draw(); 
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // --- INTERACTIVE CURSOR SETUP ---
+    function getEventCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        // Calculate pixel coordinates
+        const pixelX = e.clientX - rect.left;
+        const pixelY = e.clientY - rect.top;
+        // Convert to simulation coordinates (0-100) and clamp
+        const simX = Math.max(0, Math.min(100, Math.round(pixelX / scaleX)));
+        const simY = Math.max(0, Math.min(100, Math.round(pixelY / scaleY)));
+        return { x: simX, y: simY, px: pixelX, py: pixelY };
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+        const coords = getEventCoords(e);
+        // Update the display text
+        cursorCoordsDisplay.textContent = `CURSOR: X:${String(coords.x).padStart(3, '0')} Y:${String(coords.y).padStart(3, '0')}`;
+    });
+
+    canvas.addEventListener('click', (e) => {
+        const coords = getEventCoords(e);
+        // Update input fields based on click
+        targetInputX.value = coords.x;
+        targetInputY.value = coords.y;
+        
+        // Optional: quick visual feedback where clicked
+        draw(); 
+        ctx.strokeStyle = 'rgba(0, 242, 255, 0.8)';
+        ctx.beginPath();
+        ctx.arc(coords.px, coords.py, 5, 0, Math.PI*2);
+        ctx.stroke();
+    });
+    
+    // --- MATH HELPERS ---
+    function distance(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function findClosestDock(currentPos, docks) {
+        let closestDock = null;
+        let minDist = Infinity;
+        docks.forEach(dock => {
+            const dist = distance(dock, currentPos);
+            if (dist < minDist) {
+                minDist = dist;
+                closestDock = dock;
+            }
+        });
+        return closestDock;
+    }
+
+    // --- CORE LOGIC: MAX TIME CALCULATION ---
+    function calculateMaxHoverTime(startPos, targetPos) {
+        const returnDock = findClosestDock(targetPos, DOCKS);
+        const distReturn = distance(targetPos, returnDock);
+        const energyReturn = distReturn * ENERGY_MOVE_COST;
+        const distOutbound = distance(startPos, targetPos);
+        // 10% safety margin for obstacle navigation
+        const energyOutbound = (distOutbound * ENERGY_MOVE_COST) * 1.10; 
+        const reservedEnergy = energyReturn + MIN_RETURN_ENERGY;
+        const availableForHover = BATTERY_MAX - energyOutbound - reservedEnergy;
+
+        if (availableForHover <= 0) {
+            return { time: 0, dock: returnDock, valid: false };
+        }
+
+        return {
+            time: Math.floor(availableForHover / ENERGY_HOVER_COST),
+            dock: returnDock,
+            valid: true
+        };
+    }
+
+    // --- OBSTACLE AVOIDANCE SYSTEM ---
+    function checkObstacles(currentPos, nextPos) {
+        let avoidanceVector = { x: 0, y: 0 };
+        let hitObstacle = false;
+
+        DOCKS.forEach(dock => {
+            const distToDock = distance(nextPos, dock);
+            if (distToDock < OBSTACLE_RADIUS) {
+                hitObstacle = true;
+                const dx = nextPos.x - dock.x;
+                const dy = nextPos.y - dock.y;
+                const overlap = OBSTACLE_RADIUS - distToDock;
+                const len = Math.sqrt(dx*dx + dy*dy);
+                
+                if (len > 0) {
+                    avoidanceVector.x += (dx / len) * overlap;
+                    avoidanceVector.y += (dy / len) * overlap;
+                } else {
+                    avoidanceVector.x += overlap; 
+                }
+            }
+        });
+
+        if (hitObstacle) {
+            nextPos.x += avoidanceVector.x;
+            nextPos.y += avoidanceVector.y;
+        }
+        return nextPos;
+    }
+
+    // --- MAIN SIMULATION LOOP ---
+    function updateUUV() {
+        if (uuv.state === "IDLE" || uuv.state === "DOCKED") return;
+
+        // --- CHARGING ---
+        if (uuv.state === "CHARGING") {
+            if (uuv.battery < BATTERY_MAX) {
+                uuv.battery += CHARGE_RATE;
+            } else {
+                uuv.battery = BATTERY_MAX;
+                uuv.state = "DOCKED";
+            }
+            return; 
+        }
+
+        // --- MOVEMENT ---
+        let destination = null;
+        if (uuv.state === "MOVING_OUT") destination = uuv.target;
+        if (uuv.state === "RETURNING") destination = uuv.home_dock_pos;
+
+        if (destination) {
+            const dx = destination.x - uuv.pos.x;
+            const dy = destination.y - uuv.pos.y;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+
+            uuv.heading_angle = Math.atan2(dy, dx);
+
+            if (dist < MOVE_SPEED) {
+                // ARRIVAL
+                uuv.pos = { x: destination.x, y: destination.y };
+                if (uuv.state === "MOVING_OUT") {
+                    uuv.state = "HOVERING";
+                } else if (uuv.state === "RETURNING") {
+                    uuv.state = "CHARGING";
+                }
+            } else {
+                // MOVE
+                let moveX = (dx / dist) * MOVE_SPEED;
+                let moveY = (dy / dist) * MOVE_SPEED;
+                let nextPos = { x: uuv.pos.x + moveX, y: uuv.pos.y + moveY };
+
+                // Conditional Avoidance: Only when outbound
+                if (uuv.state === "MOVING_OUT") {
+                    nextPos = checkObstacles(uuv.pos, nextPos);
+                }
+
+                const actualDist = distance(uuv.pos, nextPos);
+                uuv.pos = nextPos;
+                uuv.battery -= actualDist * ENERGY_MOVE_COST;
+            }
+        }
+        
+        // --- HOVERING ---
+        if (uuv.state === "HOVERING") {
+            if (uuv.hover_timer > 0) {
+                uuv.hover_timer -= 1;
+                uuv.battery -= ENERGY_HOVER_COST;
+            } else {
+                uuv.state = "RETURNING";
+            }
+        }
+
+        uuv.battery = Math.max(0, uuv.battery);
+    }
+
+    // --- DRAWING ---
+    function drawGrid() {
+        ctx.strokeStyle = 'rgba(0, 242, 255, 0.15)'; // Faint cyan grid
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        // Draw vertical and horizontal lines every 10 units
+        for (let i = 0; i <= 100; i += 10) {
+            // Vertical
+            ctx.moveTo(i * scaleX, 0);
+            ctx.lineTo(i * scaleX, canvas.height);
+            // Horizontal
+            ctx.moveTo(0, i * scaleY);
+            ctx.lineTo(canvas.width, i * scaleY);
+        }
+        ctx.stroke();
+    }
+
+    function drawTorpedo(x, y, angle) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+        
+        // Glowing Trail effect
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = "rgba(0, 242, 255, 0.5)";
+
+        // Torpedo Body
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 14, 6, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        
+        // Tail Fins & Engine glow
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.moveTo(-12, 0);
+        ctx.lineTo(-16, -6);
+        ctx.lineTo(-16, 6);
+        ctx.fill();
+
+        // Highlight/Structure
+        ctx.strokeStyle = '#00f2ff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        ctx.restore();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawGrid(); // Draw the new grid first
+
+        // Draw Docks & Reactive Exclusion Zones
+        DOCKS.forEach(dock => {
+            const dx = dock.x * scaleX;
+            const dy = dock.y * scaleY;
+            
+            // Calculate distance for reactive graphics
+            const distToUUV = distance(uuv.pos, dock);
+            // Activate shield graphic if UUV is moving out and close (radius + 2 buffer)
+            const isAvoidanceActive = uuv.state === 'MOVING_OUT' && distToUUV < OBSTACLE_RADIUS + 2;
+
+            if (isAvoidanceActive) {
+                // Active Shield (Bright glowing red)
+                ctx.fillStyle = 'rgba(255, 51, 51, 0.2)';
+                ctx.strokeStyle = 'rgba(255, 51, 51, 0.8)';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = "#ff3333";
+            } else {
+                // Passive Zone (Faint cyan/red mix)
+                ctx.fillStyle = 'rgba(0, 242, 255, 0.05)';
+                ctx.strokeStyle = 'rgba(0, 242, 255, 0.2)';
+                ctx.shadowBlur = 0;
+            }
+
+            // Draw exclusion zone circle
+            ctx.lineWidth = isAvoidanceActive ? 2 : 1;
+            ctx.beginPath();
+            ctx.arc(dx, dy, OBSTACLE_RADIUS * scaleX, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.shadowBlur = 0; // Reset shadow
+
+            // Docking Station (Futuristic Box)
+            ctx.fillStyle = '#1e293b';
+            ctx.strokeStyle = '#00f2ff';
+            ctx.lineWidth = 2;
+            ctx.fillRect(dx - 8, dy - 8, 16, 16);
+            ctx.strokeRect(dx - 8, dy - 8, 16, 16);
+            
+            // Label
+            ctx.fillStyle = '#00f2ff';
+            ctx.font = '10px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(dock.id, dx, dy + 22);
+        });
+
+        // Draw Target
+        const tx = uuv.target.x * scaleX;
+        const ty = uuv.target.y * scaleY;
+        if (uuv.mission_count > 0 || uuv.is_running) {
+            ctx.strokeStyle = '#ff3333';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = "#ff3333";
+            ctx.beginPath();
+            ctx.moveTo(tx - 7, ty - 7); ctx.lineTo(tx + 7, ty + 7);
+            ctx.moveTo(tx + 7, ty - 7); ctx.lineTo(tx - 7, ty + 7);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // Draw Paths
+        if (uuv.state !== "IDLE") {
+            // Outbound Path (Dashed Cyan)
+            ctx.strokeStyle = 'rgba(0, 242, 255, 0.5)'; 
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(uuv.deployment_pos.x * scaleX, uuv.deployment_pos.y * scaleY);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+            
+            // Return Path (Solid Green)
+            if (uuv.home_dock_pos) {
+                ctx.strokeStyle = 'rgba(51, 255, 87, 0.6)'; 
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(tx, ty);
+                ctx.lineTo(uuv.home_dock_pos.x * scaleX, uuv.home_dock_pos.y * scaleY);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        drawTorpedo(uuv.pos.x * scaleX, uuv.pos.y * scaleY, uuv.heading_angle);
+    }
+
+    // --- UI CONTROLLER ---
+    function updateUI() {
+        let statusStr = uuv.state;
+        if (uuv.state === 'HOVERING') statusStr += ` (T-${uuv.hover_timer})`;
+        else if (uuv.state === 'DOCKED') statusStr = `DOCKED @ ${uuv.home_dock_pos.id}`;
+        else if (uuv.state === 'IDLE') statusStr = "STANDBY. AWAITING COORDINATES.";
+
+        statusText.textContent = `STATUS: ${statusStr}`;
+        
+        const pct = Math.max(0, uuv.battery).toFixed(1);
+        batteryValue.textContent = pct + "%";
+        batteryLevel.style.width = pct + "%";
+        
+        // Battery Colors
+        const green = getComputedStyle(document.documentElement).getPropertyValue('--accent-green');
+        const red = getComputedStyle(document.documentElement).getPropertyValue('--accent-red');
+        const cyan = getComputedStyle(document.documentElement).getPropertyValue('--accent-cyan');
+
+        if (uuv.state === 'CHARGING') {
+            batteryLevel.style.backgroundColor = cyan;
+            batteryLevel.style.boxShadow = `0 0 15px ${cyan}`;
+        } else if (uuv.battery > 40) {
+            batteryLevel.style.backgroundColor = green;
+             batteryLevel.style.boxShadow = `0 0 10px ${green}`;
+        } else {
+            batteryLevel.style.backgroundColor = red;
+             batteryLevel.style.boxShadow = `0 0 15px ${red}`;
+        }
+
+        const canStart = (uuv.state === "DOCKED" && uuv.battery >= 99) || uuv.state === "IDLE";
+        startButton.disabled = !canStart;
+        startButton.textContent = uuv.is_running ? "SEQUENCE RUNNING..." : (canStart ? "INITIATE SEQUENCE" : "RECHARGING...");
+    }
+
+    // --- LOOP ---
+    function mainLoop() {
+        updateUUV();
+        draw();
+        updateUI();
+        requestAnimationFrame(mainLoop);
+    }
+
+    // --- INPUT HANDLER ---
+    startButton.addEventListener('click', () => {
+        const tx = parseFloat(targetInputX.value);
+        const ty = parseFloat(targetInputY.value);
+
+        if (isNaN(tx) || isNaN(ty) || tx < 0 || ty < 0 || tx > 100 || ty > 100) {
+            alert("INVALID COORDINATES. Range: 0-100.");
+            return;
+        }
+
+        const targetPos = { x: tx, y: ty };
+        let startPos = (uuv.mission_count === 0) ? { x: 0, y: 0 } : uuv.pos;
+
+        const plan = calculateMaxHoverTime(startPos, targetPos);
+        
+        if (!plan.valid) {
+            alert("INSUFFICIENT ENERGY RESERVES FOR RETURN TRIP.");
+            return;
+        }
+
+        maxTimeDisplay.textContent = plan.time;
+        
+        uuv.target = targetPos;
+        uuv.hover_timer = plan.time;
+        uuv.home_dock_pos = plan.dock;
+        uuv.deployment_pos = startPos;
+        uuv.pos = startPos;
+        uuv.battery = BATTERY_MAX;
+        uuv.state = "MOVING_OUT";
+        uuv.is_running = true;
+        uuv.mission_count++;
+    });
+
+    resizeCanvas();
+    mainLoop();
+</script>
+</body>
+</html>
